@@ -11,7 +11,7 @@
 
 
 #define MHU_MAX_SIZE            96
-#define BUFF_SIZE            	64
+#define BUFF_SIZE            	16
 #define CMD_RPCUINTREE_TEST     0x6
 
 
@@ -179,16 +179,7 @@ static ssize_t phys_access_proc_read(struct file *filp, char __user *buffer,
 
 static int phys_access_mmap(struct file *file, struct vm_area_struct *vma)
 {
-	size_t size = vma->vm_end - vma->vm_start;
-
-	if (remap_pfn_range(vma,
-			vma->vm_start,
-			vma->vm_pgoff,
-			size,
-			vma->vm_page_prot)) {
-		return -EAGAIN;
-	}
-	return 0;	
+	return -EAGAIN;
 }
 
 static loff_t phys_access_lseek(struct file *file, loff_t offset, int orig)
@@ -230,7 +221,7 @@ static int __init phys_access_init(void)
 
 static void __exit phys_access_cleanup(void)
 {
-	remove_proc_entry("phys_mem", NULL);
+	remove_proc_entry("riscv_mem", NULL);
 }
 
 module_init(phys_access_init);

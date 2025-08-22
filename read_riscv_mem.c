@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <string.h>
 
-#define BUFF_SIZE            	64
+#define BUFF_SIZE            	(16)
 
 int main(int argc, char *argv[]) {
     unsigned long phys_addr;
@@ -65,10 +65,10 @@ int main(int argc, char *argv[]) {
     // Чтение данных блоками по 32 байта
     while (total_read < length) {
         size_t to_read = (length - total_read) > BUFF_SIZE ? BUFF_SIZE : (length - total_read);
-        
+        memset(buffer,0xff,sizeof(buffer));
         bytes_read = read(mem_fd, buffer, to_read);
         if (bytes_read < 0) {
-            perror("Failed to read from /proc/phys_mem");
+            perror("Failed to read from /proc/riscv_mem");
             close(mem_fd);
             close(out_fd);
             return 1;
