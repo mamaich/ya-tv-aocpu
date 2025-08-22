@@ -5,14 +5,14 @@
 #include <errno.h>
 #include <string.h>
 
-#define BLOCK_SIZE 16
+#define BUFF_SIZE            	64
 
 int main(int argc, char *argv[]) {
     unsigned long phys_addr;
     size_t length;
     char *filename;
     int mem_fd, out_fd;
-    char buffer[BLOCK_SIZE];
+    char buffer[BUFF_SIZE];
     ssize_t bytes_read, bytes_written;
     size_t total_read = 0;
 
@@ -64,7 +64,7 @@ int main(int argc, char *argv[]) {
 
     // Чтение данных блоками по 32 байта
     while (total_read < length) {
-        size_t to_read = (length - total_read) > BLOCK_SIZE ? BLOCK_SIZE : (length - total_read);
+        size_t to_read = (length - total_read) > BUFF_SIZE ? BUFF_SIZE : (length - total_read);
         
         bytes_read = read(mem_fd, buffer, to_read);
         if (bytes_read < 0) {
