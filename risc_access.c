@@ -11,7 +11,7 @@
 
 
 #define MHU_MAX_SIZE            96
-#define BUFF_SIZE            	16
+#define BUFF_SIZE            	0x1000
 #define CMD_RPCUINTREE_TEST     0x6
 
 
@@ -41,11 +41,13 @@ int scpi_send_data(void *data, int size, int channel,
 
 /*
 void func(unsigned long *msg) { //https://godbolt.org/ risc-v 32 bits
-    unsigned long addr=*msg;
-    for(int i=0; i<64; i++)
+    unsigned char *srcaddr=(unsigned char*)msg[0];
+    unsigned char *dstaddr=(unsigned char*)msg[1];
+    unsigned long len=msg[2];
+    do
     {
-        msg[i]=*(unsigned long*)(addr+i*4);
-    }
+        *dstaddr++=*srcaddr++;
+    } while(--len);
 }
 func(unsigned long*):   // https://riscvasm.lucasteske.dev/
         addi    sp,sp,-48
@@ -55,29 +57,30 @@ func(unsigned long*):   // https://riscvasm.lucasteske.dev/
         sw      a0,-36(s0)
         lw      a5,-36(s0)
         lw      a5,0(a5)
-        sw      a5,-24(s0)
-        sw      zero,-20(s0)
-        j       .L2
-.L3:
-        lw      a5,-20(s0)
-        slli    a5,a5,2
-        mv      a4,a5
-        lw      a5,-24(s0)
-        add     a5,a4,a5
-        mv      a3,a5
-        lw      a5,-20(s0)
-        slli    a5,a5,2
-        lw      a4,-36(s0)
-        add     a5,a4,a5
-        lw      a4,0(a3)
-        sw      a4,0(a5)
-        lw      a5,-20(s0)
-        addi    a5,a5,1
         sw      a5,-20(s0)
+        lw      a5,-36(s0)
+        addi    a5,a5,4
+        lw      a5,0(a5)
+        sw      a5,-24(s0)
+        lw      a5,-36(s0)
+        lw      a5,8(a5)
+        sw      a5,-28(s0)
 .L2:
-        lw      a4,-20(s0)
-        li      a5,63
-        ble     a4,a5,.L3
+        lw      a5,-20(s0)
+        addi    a4,a5,1
+        sw      a4,-20(s0)
+        lbu     a4,0(a5)
+        lw      a5,-24(s0)
+        addi    a3,a5,1
+        sw      a3,-24(s0)
+        sb      a4,0(a5)
+        lw      a5,-28(s0)
+        addi    a5,a5,-1
+        sw      a5,-28(s0)
+        lw      a5,-28(s0)
+        snez    a5,a5
+        andi    a5,a5,0xff
+        bne     a5,zero,.L2
         nop
         nop
         lw      ra,44(sp)
@@ -94,31 +97,29 @@ static uint32_t patch[]={
 	0xfdc42783,
 	0x0007a783,
 	0xfef42623,
-	0xfec42783,
-	0x0007a703,
-	0xfdc42783,
-	0x00e7a023,
-	0xfec42783,
-	0x00478793,
-	0x00078713,
 	0xfdc42783,
 	0x00478793,
-	0x00072703,
-	0x00e7a023,
-	0xfec42783,
-	0x00878793,
-	0x00078713,
+	0x0007a783,
+	0xfef42423,
 	0xfdc42783,
-	0x00878793,
-	0x00072703,
-	0x00e7a023,
+	0x0087a783,
+	0xfef42223,
 	0xfec42783,
-	0x00c78793,
-	0x00078713,
-	0xfdc42783,
-	0x00c78793,
-	0x00072703,
-	0x00e7a023,
+	0x00178713,
+	0xfee42623,
+	0x0007c703,
+	0xfe842783,
+	0x00178693,
+	0xfed42423,
+	0x00e78023,
+	0xfe442783,
+	0xfff78793,
+	0xfef42223,
+	0xfe442783,
+	0x00f037b3,
+	0x0ff7f793,
+	0xfc0794e3,
+	0x00000013,
 	0x00000013,
 	0x02c12083,
 	0x02812403,
@@ -146,8 +147,13 @@ static void init_patch(void)
 
 static void readbuf(uint32_t addr, uint8_t buff[BUFF_SIZE])
 {
-    uint32_t read_addr=addr;
-    scpi_send_data(&read_addr,sizeof(read_addr),C_AOCPU_FIFO,CMD_RPCUINTREE_TEST,buff,BUFF_SIZE);
+    uint32_t msg[3];
+    msg[0]=addr;
+    msg[1]=0;//virt_to_phys(buff);
+    msg[2]=BUFF_SIZE;
+    memset(buff,0xff,BUFF_SIZE);
+    scpi_send_data(msg,sizeof(msg),C_AOCPU_FIFO,CMD_RPCUINTREE_TEST,msg,sizeof(msg));
+    memcpy(buff,__va(0), BUFF_SIZE);
 }
        
 static int phys_access_proc_open(struct inode *inode, struct file *filp)
@@ -165,7 +171,7 @@ static ssize_t phys_access_proc_read(struct file *filp, char __user *buffer,
 			size_t count, loff_t *ppos)
 {
 	long phys_offset = *ppos;
-	uint8_t virt[BUFF_SIZE];
+	static uint8_t virt[BUFF_SIZE];
 
 	if(count>BUFF_SIZE)
 		count=BUFF_SIZE;
@@ -179,7 +185,16 @@ static ssize_t phys_access_proc_read(struct file *filp, char __user *buffer,
 
 static int phys_access_mmap(struct file *file, struct vm_area_struct *vma)
 {
-	return -EAGAIN;
+	size_t size = vma->vm_end - vma->vm_start;
+
+	if (remap_pfn_range(vma,
+			vma->vm_start,
+			vma->vm_pgoff,
+			size,
+			vma->vm_page_prot)) {
+		return -EAGAIN;
+	}
+	return 0;	
 }
 
 static loff_t phys_access_lseek(struct file *file, loff_t offset, int orig)
