@@ -185,16 +185,7 @@ static ssize_t phys_access_proc_read(struct file *filp, char __user *buffer,
 
 static int phys_access_mmap(struct file *file, struct vm_area_struct *vma)
 {
-	size_t size = vma->vm_end - vma->vm_start;
-
-	if (remap_pfn_range(vma,
-			vma->vm_start,
-			vma->vm_pgoff,
-			size,
-			vma->vm_page_prot)) {
-		return -EAGAIN;
-	}
-	return 0;	
+	return -EAGAIN;
 }
 
 static loff_t phys_access_lseek(struct file *file, loff_t offset, int orig)
